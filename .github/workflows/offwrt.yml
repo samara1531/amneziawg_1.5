@@ -25,6 +25,17 @@ jobs:
           ref: v${{ matrix.build_env.tag }}
           fetch-depth: 0
 
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.6'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl git build-essential unzip xz-utils coreutils python3-dev python3-setuptools swig python3-pyelftools
+
       - name: Cache Tools and Kernel
         id: cache-tools-kernel
         uses: actions/cache@v4
@@ -74,14 +85,36 @@ jobs:
             exit 1
           fi
 
-          make package/amneziawg-go/{clean,download,prepare} V=s || true
-          make package/amneziawg-go/compile V=s || true
 
-          make package/luci-proto-amneziawg/{clean,download,prepare}
-          make package/luci-proto-amneziawg/compile V=s
+           echo "Using external Go for AWG build"
 
-          make V=s package/amneziawg-tools/{clean,download,prepare}
-          make V=s package/amneziawg-tools/compile
+           # Добавляем системный Go в PATH
+           export PATH="/opt/hostedtoolcache/go/1.24.6/x64/bin:$PATH"
+           export GOROOT="/opt/hostedtoolcache/go/1.24.6/x64"
+           export GOPATH="$(pwd)/.go_work"
+
+           mkdir -p $GOPATH/src
+
+          # Сборка amneziawg-go
+          pushd package/feeds/awgopenwrt/amneziawg-go
+          make clean
+          make compile GO="$GOROOT/bin/go" -j$(nproc)
+          popd
+
+          # AmneziaWG core (Go)
+          make package/amneziawg-go/download V=s
+          make package/amneziawg-go/prepare V=s
+          make package/amneziawg-go/compile V=s
+
+          # LuCI app
+          make package/luci-app-amneziawg/download V=s
+          make package/luci-app-amneziawg/prepare V=s
+          make package/luci-app-amneziawg/compile V=s
+
+          # Tools
+          make package/amneziawg-tools/download V=s
+          make package/amneziawg-tools/prepare V=s
+          make package/amneziawg-tools/compile V=s
 
       - name: Prepare artifacts
         run: |
